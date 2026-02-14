@@ -1,102 +1,159 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_REF="${PROJECT_REF:-acrvyexkvtpmyprojdzw}"
-SUPABASE_URL="${SUPABASE_URL:-https://${PROJECT_REF}.supabase.co}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Load local env file if present (but never commit real secrets)
+if [[ -f "${REPO_ROOT}/.env" ]]; then
+  # shellcheck source=/dev/null
+  source "${REPO_ROOT}/.env"
+fi
+
+# ---------- Helpers ----------
+
+log() {
+  # Log to stderr with UTC timestamp
+  printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
+}
+
+fail() {
+  log "ERROR: $*"
+  exit 1
+}
 
 require() {
-  if [[ -z "${!1:-}" ]]; then
-    echo "Missing required env var: $1" >&2
-    exit 1
+  local name="$1"
+  if [[ -z "${!name-}" ]]; then
+    fail "Missing required environment variable: ${name}"
   fi
 }
 
+# Portable "7 days ago" in UTC
+seven_days_ago_utc() {
+  if date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ >/dev/null 2>&1; then
+    date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ
+  elif date -u -v-7d +%Y-%m-%dT%H:%M:%SZ >/dev/null 2>&1; then
+    # macOS BSD date
+    date -u -v-7d +%Y-%m-%dT%H:%M:%SZ
+  else
+    python3 - << 'PY'
+from datetime import datetime, timedelta
+print((datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+PY
+  fi
+}
+
+# Thin wrapper around Supabase CLI so we always pass project + token
+supa() {
+  if ! command -v supabase >/dev/null 2>&1; then
+    fail "Supabase CLI not found on PATH. See: https://supabase.com/docs/guides/cli"
+  fi
+
+  supabase "$@" \
+    --project-ref "${PROJECT_REF}" \
+    --access-token "${SUPABASE_ACCESS_TOKEN}"
+}
+
+# ---------- Required env ----------
+
+require PROJECT_REF
 require SUPABASE_ACCESS_TOKEN
 
-cmd="${1:-}"; shift || true
+# Feature toggles (default: only Stripe enabled)
+ENABLE_STRIPE="${ENABLE_STRIPE:-1}"
+ENABLE_SQUARE="${ENABLE_SQUARE:-0}"
+ENABLE_AUTHNET="${ENABLE_AUTHNET:-0}"
 
-set_secrets() {
+# ---------- Per‑provider config ----------
+
+push_stripe_secrets() {
+  if [[ "${ENABLE_STRIPE}" != "1" ]]; then
+    log "Stripe disabled via ENABLE_STRIPE=0 — skipping."
+    return 0
+  fi
+
+  log "Configuring Stripe secrets in Supabase…"
   require STRIPE_SECRET_KEY
   require STRIPE_WEBHOOK_SECRET
+
+  supa secrets set \
+    "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}" \
+    "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}"
+
+  log "Stripe secrets set."
+}
+
+push_square_secrets() {
+  if [[ "${ENABLE_SQUARE}" != "1" ]]; then
+    log "Square disabled via ENABLE_SQUARE=0 — skipping."
+    return 0
+  fi
+
+  log "Configuring Square secrets in Supabase…"
   require SQUARE_ACCESS_TOKEN
   require SQUARE_WEBHOOK_SIGNATURE_KEY
+
+  supa secrets set \
+    "SQUARE_ACCESS_TOKEN=${SQUARE_ACCESS_TOKEN}" \
+    "SQUARE_WEBHOOK_SIGNATURE_KEY=${SQUARE_WEBHOOK_SIGNATURE_KEY}"
+
+  log "Square secrets set."
+}
+
+push_authnet_secrets() {
+  if [[ "${ENABLE_AUTHNET}" != "1" ]]; then
+    log "Authorize.net disabled via ENABLE_AUTHNET=0 — skipping."
+    return 0
+  fi
+
+  log "Configuring Authorize.net secrets in Supabase…"
   require AUTHORIZENET_API_LOGIN_ID
   require AUTHORIZENET_TRANSACTION_KEY
   require AUTHORIZENET_WEBHOOK_SIGNATURE_KEY
 
+  # Allow override of API URL (sandbox vs production)
   AUTHORIZENET_API_URL="${AUTHORIZENET_API_URL:-https://apitest.authorize.net/xml/v1/request.api}"
 
-  npx -y supabase secrets set --project-ref "$PROJECT_REF" \
-    STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
-    STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" \
-    SQUARE_ACCESS_TOKEN="$SQUARE_ACCESS_TOKEN" \
-    SQUARE_WEBHOOK_SIGNATURE_KEY="$SQUARE_WEBHOOK_SIGNATURE_KEY" \
-    AUTHORIZENET_API_LOGIN_ID="$AUTHORIZENET_API_LOGIN_ID" \
-    AUTHORIZENET_TRANSACTION_KEY="$AUTHORIZENET_TRANSACTION_KEY" \
-    AUTHORIZENET_WEBHOOK_SIGNATURE_KEY="$AUTHORIZENET_WEBHOOK_SIGNATURE_KEY" \
-    AUTHORIZENET_API_URL="$AUTHORIZENET_API_URL"
+  supa secrets set \
+    "AUTHORIZENET_API_LOGIN_ID=${AUTHORIZENET_API_LOGIN_ID}" \
+    "AUTHORIZENET_TRANSACTION_KEY=${AUTHORIZENET_TRANSACTION_KEY}" \
+    "AUTHORIZENET_WEBHOOK_SIGNATURE_KEY=${AUTHORIZENET_WEBHOOK_SIGNATURE_KEY}" \
+    "AUTHORIZENET_API_URL=${AUTHORIZENET_API_URL}"
+
+  log "Authorize.net secrets set."
 }
 
-verify_functions() {
-  npx -y supabase functions list --project-ref "$PROJECT_REF"
+# ---------- Connectivity sanity checks (lightweight) ----------
+
+check_supabase_link() {
+  log "Verifying Supabase project link…"
+  # This will fail if the project ref or access token is wrong
+  supa db remote commit-history >/dev/null 2>&1 || {
+    fail "Supabase CLI cannot reach project ${PROJECT_REF}. Check PROJECT_REF and SUPABASE_ACCESS_TOKEN."
+  }
+  log "Supabase project reachable."
 }
 
-sync_provider() {
-  provider="$1"
-  require ACCESS_TOKEN
-  require ANON_KEY
-  require COMPANY_ID
-
-  curl -sS -X POST \
-    -H "Authorization: Bearer $ACCESS_TOKEN" \
-    -H "apikey: $ANON_KEY" \
-    -H "Content-Type: application/json" \
-    "${SUPABASE_URL}/functions/v1/ingestion-api/v1/connectors/${provider}/sync" \
-    -d "{\"company_id\":\"${COMPANY_ID}\",\"idempotency_key\":\"manual-sync:${provider}:$(date +%s)\",\"max_retries\":3}" | jq .
+# Placeholder checks — you can extend these once edge functions are deployed.
+check_phase_a_ready() {
+  log "Phase A basic checks complete. Deeper checks run via validate_phase_a.sh."
 }
 
-backfill_provider() {
-  provider="$1"
-  require ACCESS_TOKEN
-  require ANON_KEY
-  require COMPANY_ID
+# ---------- Main ----------
 
-  since="${SINCE:-$(date -u -v-7d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || python3 - <<'PY'
-from datetime import datetime, timedelta
-print((datetime.utcnow()-timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%SZ'))
-PY
-)}"
-  until="${UNTIL:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+main() {
+  log "Starting Phase A provider activation for project: ${PROJECT_REF}"
 
-  curl -sS -X POST \
-    -H "Authorization: Bearer $ACCESS_TOKEN" \
-    -H "apikey: $ANON_KEY" \
-    -H "Content-Type: application/json" \
-    "${SUPABASE_URL}/functions/v1/ingestion-api/v1/connectors/${provider}/backfill" \
-    -d "{\"company_id\":\"${COMPANY_ID}\",\"idempotency_key\":\"backfill:${provider}:$(date +%s)\",\"max_retries\":3,\"since\":\"${since}\",\"until\":\"${until}\",\"pages\":3}" | jq .
+  check_supabase_link
+
+  push_stripe_secrets
+  push_square_secrets
+  push_authnet_secrets
+
+  check_phase_a_ready
+
+  log "Phase A activation script completed successfully."
 }
 
-case "$cmd" in
-  set-secrets)
-    set_secrets
-    ;;
-  verify-functions)
-    verify_functions
-    ;;
-  sync)
-    sync_provider "$1"
-    ;;
-  backfill)
-    backfill_provider "$1"
-    ;;
-  *)
-    cat <<USAGE
-Usage:
-  SUPABASE_ACCESS_TOKEN=... scripts/phase_a_activate.sh set-secrets
-  SUPABASE_ACCESS_TOKEN=... scripts/phase_a_activate.sh verify-functions
-  SUPABASE_ACCESS_TOKEN=... ACCESS_TOKEN=... ANON_KEY=... COMPANY_ID=... scripts/phase_a_activate.sh sync stripe|square|authorizenet
-  SUPABASE_ACCESS_TOKEN=... ACCESS_TOKEN=... ANON_KEY=... COMPANY_ID=... scripts/phase_a_activate.sh backfill stripe|square|authorizenet
-USAGE
-    exit 1
-    ;;
-esac
+main "$@"
