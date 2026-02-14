@@ -1,0 +1,64 @@
+name: Test
+
+on:
+  push:
+    branches: [main, main-sync, 'codex/**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and regression tests
+        env:
+          RUN_INTEGRATION_TESTS: 'false'
+        run: npm test
+
+      - name: Coverage
+        env:
+          RUN_INTEGRATION_TESTS: 'false'
+        run: npm run test:coverage
+
+  integration:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_KEY != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Integration tests
+        env:
+          RUN_INTEGRATION_TESTS: 'true'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          INGESTION_FUNCTION_URL: ${{ secrets.INGESTION_FUNCTION_URL }}
+          PROCESSOR_JOBS_FUNCTION_URL: ${{ secrets.PROCESSOR_JOBS_FUNCTION_URL }}
+          INSIGHTS_FUNCTION_URL: ${{ secrets.INSIGHTS_FUNCTION_URL }}
+        run: npm run test:integration
