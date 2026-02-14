@@ -33,6 +33,11 @@ function getAuthToken(req: Request): string | null {
 }
 
 function authorize(req: Request): boolean {
+  const internalHeaderToken = req.headers.get('x-internal-token') ?? ''
+  if (internalToken.length > 0 && internalHeaderToken === internalToken) {
+    return true
+  }
+
   const token = getAuthToken(req)
   if (!token) return false
   if (token === serviceRoleKey) return true

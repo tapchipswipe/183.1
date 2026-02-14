@@ -14,6 +14,11 @@ function json(data: unknown, status = 200) {
 }
 
 function assertAuthorized(req: Request): boolean {
+  const internalHeaderToken = req.headers.get('x-internal-token') ?? ''
+  if (internalToken.length > 0 && internalHeaderToken === internalToken) {
+    return true
+  }
+
   const authHeader = req.headers.get('authorization') ?? ''
   if (!authHeader.startsWith('Bearer ')) return false
 
@@ -82,6 +87,7 @@ async function withRunLog<T>(
 }
 
 async function runDailyPipeline(supabase: ReturnType<typeof createClient>) {
+  const invokeHeaders = internalToken.length > 0 ? { 'x-internal-token': internalToken } : undefined
   const jobs: Array<Record<string, unknown>> = [
     { job_type: 'snapshot_generation', snapshot_date: new Date().toISOString().slice(0, 10) },
     { job_type: 'anomaly_detection', window_hours: 24 },
@@ -91,7 +97,7 @@ async function runDailyPipeline(supabase: ReturnType<typeof createClient>) {
   ]
 
   for (const body of jobs) {
-    const { error } = await supabase.functions.invoke('processor-jobs', { body })
+    const { error } = await supabase.functions.invoke('processor-jobs', { body, headers: invokeHeaders })
     if (error) throw new Error(error.message)
   }
 
@@ -99,8 +105,10 @@ async function runDailyPipeline(supabase: ReturnType<typeof createClient>) {
 }
 
 async function runAnomalyRefresh(supabase: ReturnType<typeof createClient>) {
+  const invokeHeaders = internalToken.length > 0 ? { 'x-internal-token': internalToken } : undefined
   const { error } = await supabase.functions.invoke('processor-jobs', {
     body: { job_type: 'anomaly_detection', window_hours: 4 },
+    headers: invokeHeaders,
   })
 
   if (error) throw new Error(error.message)
@@ -108,6 +116,7 @@ async function runAnomalyRefresh(supabase: ReturnType<typeof createClient>) {
 }
 
 async function runDeadLetterRetry(supabase: ReturnType<typeof createClient>) {
+  const invokeHeaders = internalToken.length > 0 ? { 'x-internal-token': internalToken } : undefined
   const { data: failedJobs, error } = await supabase
     .from('ingestion_jobs')
     .select('id')
@@ -124,6 +133,7 @@ async function runDeadLetterRetry(supabase: ReturnType<typeof createClient>) {
   for (const job of failedJobs ?? []) {
     const { error: retryError } = await supabase.functions.invoke('ingestion-api', {
       body: { action: 'retry', job_id: job.id },
+      headers: invokeHeaders,
     })
 
     if (!retryError) retried += 1

@@ -20,6 +20,9 @@ function json(data: unknown, status = 200) {
 }
 
 function authorized(req: Request): boolean {
+  const internalHeaderToken = req.headers.get('x-internal-token') ?? ''
+  if (internalToken.length > 0 && internalHeaderToken === internalToken) return true
+
   const auth = req.headers.get('authorization') ?? ''
   if (!auth.startsWith('Bearer ')) return false
   const token = auth.slice('Bearer '.length)
@@ -31,13 +34,21 @@ async function runJob(supabase: ReturnType<typeof createClient>, jobType: JobTyp
     case 'snapshot_generation': {
       const snapshotDate = (payload.snapshot_date as string | undefined) ?? new Date().toISOString().slice(0, 10)
       const companyId = (payload.company_id as string | undefined) ?? 'test-company-1'
-      const { error } = await supabase.from('insight_snapshots').upsert({
-        snapshot_date: snapshotDate,
-        company_id: companyId,
-        metrics: { generated_by: 'processor-jobs', at: new Date().toISOString() },
-      })
-      if (error) throw error
-      return { snapshot_date: snapshotDate }
+      try {
+        const { error } = await supabase.from('insight_snapshots').upsert({
+          snapshot_date: snapshotDate,
+          company_id: companyId,
+          metrics: { generated_by: 'processor-jobs', at: new Date().toISOString() },
+        })
+        if (error) throw error
+        return { snapshot_date: snapshotDate, status: 'upserted' }
+      } catch (error) {
+        return {
+          snapshot_date: snapshotDate,
+          status: 'skipped',
+          warning: error instanceof Error ? error.message : 'Snapshot upsert skipped',
+        }
+      }
     }
     case 'anomaly_detection': {
       const { data: merchants, error } = await supabase.from('merchant_profiles').select('id').limit(5)
@@ -93,35 +104,43 @@ async function runJob(supabase: ReturnType<typeof createClient>, jobType: JobTyp
     }
     case 'alert_dispatch': {
       const severity = (payload.severity_filter as string | undefined) ?? 'high'
-      const { data: events, error: eventError } = await supabase
-        .from('risk_events')
-        .select('id, merchant_id')
-        .eq('severity', severity)
-        .limit(10)
-      if (eventError) throw eventError
+      try {
+        const { data: events, error: eventError } = await supabase
+          .from('risk_events')
+          .select('id, merchant_id')
+          .eq('severity', severity)
+          .limit(10)
+        if (eventError) throw eventError
 
-      const { data: channels, error: channelError } = await supabase
-        .from('alert_channels')
-        .select('id')
-        .eq('is_active', true)
-        .limit(5)
-      if (channelError) throw channelError
+        const { data: channels, error: channelError } = await supabase
+          .from('alert_channels')
+          .select('id')
+          .eq('is_active', true)
+          .limit(5)
+        if (channelError) throw channelError
 
-      const dispatches = (events ?? []).flatMap((event) =>
-        (channels ?? []).map((channel, idx) => ({
-          id: `dispatch-auto-${Date.now()}-${idx}`,
-          risk_event_id: event.id,
-          channel_id: channel.id,
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-        })),
-      )
+        const dispatches = (events ?? []).flatMap((event) =>
+          (channels ?? []).map((channel, idx) => ({
+            id: `dispatch-auto-${Date.now()}-${idx}`,
+            risk_event_id: event.id,
+            channel_id: channel.id,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+          })),
+        )
 
-      if (dispatches.length > 0) {
-        const { error: dispatchError } = await supabase.from('alert_dispatches').insert(dispatches)
-        if (dispatchError) throw dispatchError
+        if (dispatches.length > 0) {
+          const { error: dispatchError } = await supabase.from('alert_dispatches').insert(dispatches)
+          if (dispatchError) throw dispatchError
+        }
+        return { dispatches_created: dispatches.length, status: 'sent' }
+      } catch (error) {
+        return {
+          dispatches_created: 0,
+          status: 'skipped',
+          warning: error instanceof Error ? error.message : 'Alert dispatch skipped',
+        }
       }
-      return { dispatches_created: dispatches.length }
     }
   }
 }
