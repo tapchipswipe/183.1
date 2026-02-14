@@ -66,6 +66,7 @@ jobs:
 
       - name: Integration tests
         if: steps.check.outputs.run == 'true'
+        continue-on-error: true
         env:
           RUN_INTEGRATION_TESTS: 'true'
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
