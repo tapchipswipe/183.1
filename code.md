@@ -64,6 +64,16 @@ Deployed/implemented:
 
 The platform is functionally complete for the planned feature set. Remaining work is production hardening and operationalization.
 
+### Current execution status
+- Phase A has started.
+- Provider activation assets added:
+  - `docs/PHASE_A_PROVIDER_ACTIVATION.md`
+  - `scripts/phase_a_activate.sh`
+- Function deployment verified active for:
+  - `ingestion-api`
+  - `processor-jobs`
+  - `insights-api`
+
 ### Phase A: Secrets + Provider Activation (Immediate)
 1. Set production secrets in Supabase function secrets:
    - `STRIPE_SECRET_KEY`
