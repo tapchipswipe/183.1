@@ -1,0 +1,30 @@
+alerts:
+  - name: ingestion_job_failure_rate_high
+    description: Ingestion job failure ratio is above threshold
+    condition: failed_ingestion_jobs / total_ingestion_jobs > 0.10 for 10m
+    severity: high
+    notify:
+      - slack: '#ops-alerts'
+      - email: ops@example.com
+
+  - name: api_p95_latency_high
+    description: Insights API p95 latency above SLA
+    condition: api_p95_ms > 1200 for 10m
+    severity: high
+    notify:
+      - slack: '#api-alerts'
+
+  - name: dead_letter_queue_growth
+    description: Dead-letter queue is growing faster than retries
+    condition: failed_jobs_pending_retry > 50 for 30m
+    severity: medium
+    notify:
+      - slack: '#ops-alerts'
+
+  - name: risk_alert_dispatch_failure
+    description: Alert dispatch failures exceed tolerance
+    condition: alert_dispatch_failures > 5 for 10m
+    severity: high
+    notify:
+      - slack: '#ops-alerts'
+      - slack: '#api-alerts'
