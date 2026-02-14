@@ -121,9 +121,9 @@ Reposition the product into an AI-powered processor intelligence platform for in
 - Company-scoped RLS and audit trail foundation in place.
 
 ## Operational checklist
-1. Apply migration: `supabase/migrations/20260214_processor_intelligence.sql`
-2. Apply migration: `supabase/migrations/20260214_ingestion_reliability.sql`
-3. Apply migration: `supabase/migrations/20260214_phase2_phase5_delivery.sql`
+1. Apply migration: `supabase/migrations/202602140001_processor_intelligence.sql`
+2. Apply migration: `supabase/migrations/202602140002_ingestion_reliability.sql`
+3. Apply migration: `supabase/migrations/202602140003_phase2_phase5_delivery.sql`
 4. Deploy edge function: `supabase/functions/ingestion-api`
 5. Deploy edge function: `supabase/functions/processor-jobs`
 6. Deploy edge function: `supabase/functions/insights-api`

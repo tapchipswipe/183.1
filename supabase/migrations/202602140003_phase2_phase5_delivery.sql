@@ -126,32 +126,32 @@ alter table public.alert_dispatches enable row level security;
 alter table public.export_jobs enable row level security;
 alter table public.service_api_tokens enable row level security;
 
-create policy if not exists recommendation_feedback_company_read on public.recommendation_feedback
+create policy recommendation_feedback_company_read on public.recommendation_feedback
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists recommendation_feedback_company_write on public.recommendation_feedback
+create policy recommendation_feedback_company_write on public.recommendation_feedback
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists risk_case_notes_company_read on public.risk_case_notes
+create policy risk_case_notes_company_read on public.risk_case_notes
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists risk_case_notes_company_write on public.risk_case_notes
+create policy risk_case_notes_company_write on public.risk_case_notes
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists alert_channels_company_read on public.alert_channels
+create policy alert_channels_company_read on public.alert_channels
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists alert_channels_company_write on public.alert_channels
+create policy alert_channels_company_write on public.alert_channels
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists alert_dispatches_company_read on public.alert_dispatches
+create policy alert_dispatches_company_read on public.alert_dispatches
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists alert_dispatches_company_write on public.alert_dispatches
+create policy alert_dispatches_company_write on public.alert_dispatches
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists export_jobs_company_read on public.export_jobs
+create policy export_jobs_company_read on public.export_jobs
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists export_jobs_company_write on public.export_jobs
+create policy export_jobs_company_write on public.export_jobs
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists service_api_tokens_company_read on public.service_api_tokens
+create policy service_api_tokens_company_read on public.service_api_tokens
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists service_api_tokens_company_write on public.service_api_tokens
+create policy service_api_tokens_company_write on public.service_api_tokens
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));

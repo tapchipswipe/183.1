@@ -6,9 +6,9 @@ Processor-intelligence application for credit card processing companies. It inge
 
 - Processor-first navigation and routing (`Monitoring`, `Merchants`, `Risk`, `Insights`, `Recommendations`, `Integrations`, `Compliance`)
 - Legacy retail modules retained under `/legacy/*`
-- Phase 1 schema foundation in `supabase/migrations/20260214_processor_intelligence.sql`
-- Ingestion reliability migration in `supabase/migrations/20260214_ingestion_reliability.sql`
-- Phase 2-5 delivery migration in `supabase/migrations/20260214_phase2_phase5_delivery.sql`
+- Phase 1 schema foundation in `supabase/migrations/202602140001_processor_intelligence.sql`
+- Ingestion reliability migration in `supabase/migrations/202602140002_ingestion_reliability.sql`
+- Phase 2-5 delivery migration in `supabase/migrations/202602140003_phase2_phase5_delivery.sql`
 - CSV ingestion flow (app-side import into `normalized_transactions` + `ingestion_jobs`)
 - CSV validation + row-level reject reporting in Integrations
 - Connector pull + webhook ingestion implemented for Stripe, Square, and Authorize.net
@@ -34,9 +34,9 @@ Processor-intelligence application for credit card processing companies. It inge
 
 ## Supabase Setup
 
-1. Apply migration SQL in `supabase/migrations/20260214_processor_intelligence.sql`.
-2. Apply migration SQL in `supabase/migrations/20260214_ingestion_reliability.sql`.
-3. Apply migration SQL in `supabase/migrations/20260214_phase2_phase5_delivery.sql`.
+1. Apply migration SQL in `supabase/migrations/202602140001_processor_intelligence.sql`.
+2. Apply migration SQL in `supabase/migrations/202602140002_ingestion_reliability.sql`.
+3. Apply migration SQL in `supabase/migrations/202602140003_phase2_phase5_delivery.sql`.
 4. Deploy edge functions:
    - `supabase/functions/ai-chat`
    - `supabase/functions/ingestion-api`

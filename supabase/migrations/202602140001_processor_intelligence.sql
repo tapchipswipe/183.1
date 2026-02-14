@@ -1,5 +1,13 @@
 -- Processor Intelligence Platform foundational schema (Phase 1)
 
+create table if not exists public.user_roles (
+  user_id uuid not null,
+  company_id uuid not null,
+  role text not null default 'viewer' check (role in ('admin', 'manager', 'viewer', 'analyst')),
+  created_at timestamptz not null default now(),
+  primary key (user_id, company_id)
+);
+
 create table if not exists public.processor_connections (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null,
@@ -135,47 +143,47 @@ alter table public.insight_snapshots enable row level security;
 alter table public.recommendations enable row level security;
 alter table public.audit_events enable row level security;
 
-create policy if not exists processor_connections_company_read on public.processor_connections
+create policy processor_connections_company_read on public.processor_connections
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists processor_connections_company_write on public.processor_connections
+create policy processor_connections_company_write on public.processor_connections
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists ingestion_jobs_company_read on public.ingestion_jobs
+create policy ingestion_jobs_company_read on public.ingestion_jobs
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists ingestion_jobs_company_write on public.ingestion_jobs
+create policy ingestion_jobs_company_write on public.ingestion_jobs
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists merchant_profiles_company_read on public.merchant_profiles
+create policy merchant_profiles_company_read on public.merchant_profiles
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists merchant_profiles_company_write on public.merchant_profiles
+create policy merchant_profiles_company_write on public.merchant_profiles
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists normalized_transactions_company_read on public.normalized_transactions
+create policy normalized_transactions_company_read on public.normalized_transactions
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists normalized_transactions_company_write on public.normalized_transactions
+create policy normalized_transactions_company_write on public.normalized_transactions
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists risk_events_company_read on public.risk_events
+create policy risk_events_company_read on public.risk_events
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists risk_events_company_write on public.risk_events
+create policy risk_events_company_write on public.risk_events
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists merchant_scores_company_read on public.merchant_scores
+create policy merchant_scores_company_read on public.merchant_scores
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists merchant_scores_company_write on public.merchant_scores
+create policy merchant_scores_company_write on public.merchant_scores
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists insight_snapshots_company_read on public.insight_snapshots
+create policy insight_snapshots_company_read on public.insight_snapshots
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists insight_snapshots_company_write on public.insight_snapshots
+create policy insight_snapshots_company_write on public.insight_snapshots
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists recommendations_company_read on public.recommendations
+create policy recommendations_company_read on public.recommendations
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists recommendations_company_write on public.recommendations
+create policy recommendations_company_write on public.recommendations
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
 
-create policy if not exists audit_events_company_read on public.audit_events
+create policy audit_events_company_read on public.audit_events
 for select using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
-create policy if not exists audit_events_company_write on public.audit_events
+create policy audit_events_company_write on public.audit_events
 for all using (company_id in (select company_id from public.user_roles where user_id = auth.uid()));
