@@ -43,48 +43,42 @@ Reposition the product into an AI-powered processor intelligence platform for in
 ### Public API planning
 - Added `docs/insights-api-v1.md` as contract-first API spec for future implementation.
 
-## Next implementation phases
+## Delivery status
 
 ### Phase 1 completion
-1. Replace connector stubs with real Stripe/Square/Authorize.net pull + webhook handlers.
-2. Add robust CSV validation with row-level reject reports.
-3. Add idempotency + retry policy for ingestion jobs.
-4. Add connector observability (`last_sync_at`, error reason, retry counters, dead-letter queue path).
-5. Add backfill mode for historical imports with chunked pagination.
+1. Done: real Stripe/Square/Authorize.net pull + webhook handlers in `supabase/functions/ingestion-api/index.ts`.
+2. Done: robust CSV validation with row-level reject reports in `src/lib/processor-utils.ts` and `src/pages/Integrations.tsx`.
+3. Done: idempotency + retry policy for ingestion jobs.
+4. Done: connector observability (`last_sync_at`, error reason, retry counters, dead-letter queue path).
+5. Done: historical backfill mode with chunked pagination (`/v1/connectors/:provider/backfill`).
 
 ### Phase 2 (AI insights)
-1. Rule-based anomaly detection service writing to `risk_events`.
-2. Snapshot materialization jobs writing to `insight_snapshots`.
-3. LLM narrative summaries with provenance tracking.
-4. Recommendation generation pipeline.
-5. Analyst feedback loop (`helpful/not helpful`, dismissal reason) feeding recommendation tuning.
+1. Done: rule-based anomaly detection job writing to `risk_events` (`processor-jobs`).
+2. Done: snapshot materialization job writing to `insight_snapshots`.
+3. Done: narrative summaries with provenance tracking (`narrative_summary`, `provenance_json`).
+4. Done: recommendation generation pipeline.
+5. Done: analyst feedback loop via `recommendation_feedback` + recommendation feedback fields.
 
 ### Phase 3 (fraud/security)
-1. Velocity checks and geographic anomaly rules.
-2. Chargeback risk baseline model.
-3. Fraud report export and audit logging expansion.
-4. Alert routing to Slack/email/webhook destinations with severity thresholds.
+1. Done: velocity checks and geographic anomaly rules.
+2. Done: chargeback risk baseline signal in rules pipeline (heuristic v1).
+3. Done: fraud export jobs + audit logging expansion.
+4. Done: alert routing to Slack/email/webhook channels with severity thresholds.
 
 ### Phase 4 (operator workflows)
-1. Case management workflow for risk events:
-   - assign owner
-   - SLA due date
-   - state transitions (`new`, `investigating`, `resolved`, `false_positive`)
-2. Merchant scorecard trend comparison (week-over-week, month-over-month).
-3. Recommendation lifecycle actions:
-   - `accepted`
-   - `rejected`
-   - `deferred`
-4. Internal notes and attachments on merchant/risk records with audit history.
+1. Done: case management workflow for risk events (owner, SLA, workflow states).
+2. Done: merchant scorecard trend comparison (WoW/MoM) in `src/pages/Merchants.tsx`.
+3. Done: recommendation lifecycle actions (`accepted`, `rejected`, `deferred`) in `src/pages/Recommendations.tsx`.
+4. Done: internal notes and attachment refs on risk cases with audit history.
 
 ### Phase 5 (externalization and scale)
-1. Implement API contract in `docs/insights-api-v1.md` as versioned edge endpoints.
-2. Add API auth for service tokens with scoped permissions.
-3. Add warehouse export jobs (daily parquet/CSV, S3/GCS target support).
-4. Add performance hardening:
-   - partitioning/retention for `normalized_transactions`
-   - materialized aggregates for dashboard queries
-   - p95 endpoint and dashboard render SLO monitoring
+1. Done: API contract implemented in `supabase/functions/insights-api/index.ts`.
+2. Done: service-token auth with scoped permissions (`service_api_tokens` + scope checks).
+3. Done: export job pipeline (`export_jobs`) with target abstraction (`s3`/`gcs`/`download`).
+4. Done: performance baseline hardening:
+   - daily materialized rollup (`txn_daily_rollups`)
+   - indexed ingestion/recommendation/risk paths
+   - bounded query limits in API endpoints
 
 ## Delivery milestones (target sequence)
 1. Milestone A: Ingestion reliability complete (end of Phase 1).
@@ -128,7 +122,12 @@ Reposition the product into an AI-powered processor intelligence platform for in
 
 ## Operational checklist
 1. Apply migration: `supabase/migrations/20260214_processor_intelligence.sql`
-2. Deploy edge function: `supabase/functions/ingestion-api`
-3. Verify processor pages against seeded test data.
-4. Enable scheduled jobs for snapshot and risk processing.
-5. Configure alert channels and on-call routing.
+2. Apply migration: `supabase/migrations/20260214_ingestion_reliability.sql`
+3. Apply migration: `supabase/migrations/20260214_phase2_phase5_delivery.sql`
+4. Deploy edge function: `supabase/functions/ingestion-api`
+5. Deploy edge function: `supabase/functions/processor-jobs`
+6. Deploy edge function: `supabase/functions/insights-api`
+7. Seed service API tokens with scoped permissions.
+8. Verify processor pages against seeded test data.
+9. Enable scheduled jobs for snapshot/risk/recommendation processing.
+10. Configure alert channels and on-call routing.

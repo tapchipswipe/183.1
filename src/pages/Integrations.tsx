@@ -22,6 +22,9 @@ export default function Integrations() {
   const [csvText, setCsvText] = useState("source_txn_id,amount,currency,approved,occurred_at,payment_method\ntxn_1,42.50,USD,true,2026-02-14T00:00:00Z,card");
   const [statusMessage, setStatusMessage] = useState("");
   const [csvRejects, setCsvRejects] = useState<CsvReject[]>([]);
+  const [syncSince, setSyncSince] = useState("");
+  const [syncUntil, setSyncUntil] = useState("");
+  const [backfillPages, setBackfillPages] = useState("5");
 
   const hashCsv = async (text: string) => {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -75,26 +78,70 @@ export default function Integrations() {
 
   const runSync = async (provider: typeof providers[number]) => {
     if (!companyId) return;
-    const { error } = await supabase.from("ingestion_jobs").insert({
-      company_id: companyId,
-      source_type: provider,
-      source_ref: "manual-sync",
-      status: "queued",
-      retry_count: 0,
-      max_retries: 3,
-      idempotency_key: `manual-sync:${provider}:${new Date().toISOString().slice(0, 16)}`,
-      stats_json: { provider, note: "sync queued", initiated_from: "integrations_ui" },
-    });
-    if (error) {
-      setStatusMessage(`Failed to queue ${provider} sync: ${error.message}`);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setStatusMessage("No active session token");
       return;
     }
-    await supabase
-      .from("processor_connections")
-      .update({ last_sync_at: new Date().toISOString(), last_error: null, retry_count: 0 })
-      .eq("company_id", companyId)
-      .eq("provider", provider);
-    setStatusMessage(`${provider} sync queued`);
+
+    const endpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingestion-api/v1/connectors/${provider}/sync`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({
+        company_id: companyId,
+        idempotency_key: `manual-sync:${provider}:${new Date().toISOString().slice(0, 16)}`,
+        max_retries: 3,
+        since: syncSince || undefined,
+        until: syncUntil || undefined,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      setStatusMessage(`Failed to run ${provider} sync: ${payload.error ?? "unknown error"}`);
+      return;
+    }
+    setStatusMessage(`${provider} sync ${payload.status} (${payload.ingested_rows ?? 0} rows)`);
+    refetchConnections();
+    refetchJobs();
+  };
+
+  const runBackfill = async (provider: typeof providers[number]) => {
+    if (!companyId) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setStatusMessage("No active session token");
+      return;
+    }
+    const endpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingestion-api/v1/connectors/${provider}/backfill`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({
+        company_id: companyId,
+        idempotency_key: `backfill:${provider}:${syncSince}:${syncUntil}:${backfillPages}`,
+        max_retries: 3,
+        since: syncSince || undefined,
+        until: syncUntil || undefined,
+        pages: Number(backfillPages || "5"),
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      setStatusMessage(`Backfill failed for ${provider}: ${payload.error ?? "unknown error"}`);
+      return;
+    }
+    setStatusMessage(`${provider} backfill completed (${payload.ingested_rows ?? 0} rows, ${payload.pages_processed ?? 0} pages)`);
     refetchConnections();
     refetchJobs();
   };
@@ -177,8 +224,14 @@ export default function Integrations() {
           <div key={p} className="flex items-center gap-1">
             <Button size="sm" onClick={() => connectProvider(p)}>Connect {p}</Button>
             <Button size="sm" variant="outline" onClick={() => runSync(p)}>Sync {p}</Button>
+            <Button size="sm" variant="outline" onClick={() => runBackfill(p)}>Backfill {p}</Button>
           </div>
         ))}
+      </div>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        <Input value={syncSince} onChange={(e) => setSyncSince(e.target.value)} placeholder="since (ISO, optional)" />
+        <Input value={syncUntil} onChange={(e) => setSyncUntil(e.target.value)} placeholder="until (ISO, optional)" />
+        <Input value={backfillPages} onChange={(e) => setBackfillPages(e.target.value)} placeholder="backfill pages (default 5)" />
       </div>
 
       <div className="space-y-2">

@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { DataTable, type Column } from "@/components/DataTable";
 import { EntityFormSheet, type FormField } from "@/components/EntityFormSheet";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { MerchantProfile } from "@/lib/processor-types";
 
 const fields: FormField[] = [
@@ -42,6 +43,23 @@ export default function Merchants() {
     },
   });
 
+  const { data: scoreRows = [] } = useQuery({
+    queryKey: ["merchant-score-trends", companyId],
+    enabled: !!companyId,
+    queryFn: async () => {
+      if (!companyId) return [];
+      const { data, error } = await supabase
+        .from("merchant_scores")
+        .select("merchant_id,score_value,as_of,score_type")
+        .eq("company_id", companyId)
+        .eq("score_type", "approval_health")
+        .order("as_of", { ascending: false })
+        .limit(5000);
+      if (error) return [];
+      return data ?? [];
+    },
+  });
+
   const columns: Column<MerchantProfile>[] = useMemo(() => [
     { key: "legal_name", label: "Legal Name" },
     { key: "dba_name", label: "DBA Name" },
@@ -49,6 +67,38 @@ export default function Merchants() {
     { key: "risk_tier", label: "Risk Tier" },
     { key: "status", label: "Status" },
   ], []);
+
+  const trendRows = useMemo(() => {
+    const nameById = new Map(data.map((merchant) => [merchant.id, merchant.legal_name]));
+    const byMerchant = new Map<string, Array<{ score_value: number; as_of: string }>>();
+    for (const row of scoreRows as any[]) {
+      const key = String(row.merchant_id);
+      const prev = byMerchant.get(key) ?? [];
+      prev.push({ score_value: Number(row.score_value ?? 0), as_of: String(row.as_of) });
+      byMerchant.set(key, prev);
+    }
+
+    return Array.from(byMerchant.entries()).map(([merchantId, points], idx) => {
+      const ordered = [...points].sort((a, b) => new Date(b.as_of).getTime() - new Date(a.as_of).getTime());
+      const latest = ordered[0]?.score_value ?? 0;
+      const prev = ordered[1]?.score_value ?? latest;
+      const monthRef = ordered.find((x) => new Date(x.as_of).getTime() <= Date.now() - 28 * 24 * 60 * 60 * 1000)?.score_value ?? prev;
+      return {
+        id: `${merchantId}-${idx}`,
+        merchant: nameById.get(merchantId) ?? merchantId.slice(0, 8),
+        latest,
+        wow_delta: latest - prev,
+        mom_delta: latest - monthRef,
+      };
+    }).sort((a, b) => b.latest - a.latest).slice(0, 50);
+  }, [data, scoreRows]);
+
+  const trendColumns: Column<(typeof trendRows)[number]>[] = [
+    { key: "merchant", label: "Merchant" },
+    { key: "latest", label: "Latest Score", render: (r) => r.latest.toFixed(2) },
+    { key: "wow_delta", label: "WoW Delta", render: (r) => r.wow_delta.toFixed(2) },
+    { key: "mom_delta", label: "MoM Delta", render: (r) => r.mom_delta.toFixed(2) },
+  ];
 
   const reset = () => {
     setEditingId(null);
@@ -110,6 +160,14 @@ export default function Merchants() {
     <div className="space-y-3">
       <h1 className="text-sm font-semibold">Merchants</h1>
       <DataTable data={data} columns={columns} loading={isLoading} addLabel="Merchant" onAdd={() => { reset(); setOpen(true); }} onRowClick={openEdit} />
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Merchant Scorecard Trends</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DataTable data={trendRows} columns={trendColumns} />
+        </CardContent>
+      </Card>
       <EntityFormSheet
         open={open}
         onOpenChange={setOpen}

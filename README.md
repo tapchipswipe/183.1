@@ -8,10 +8,13 @@ Processor-intelligence application for credit card processing companies. It inge
 - Legacy retail modules retained under `/legacy/*`
 - Phase 1 schema foundation in `supabase/migrations/20260214_processor_intelligence.sql`
 - Ingestion reliability migration in `supabase/migrations/20260214_ingestion_reliability.sql`
+- Phase 2-5 delivery migration in `supabase/migrations/20260214_phase2_phase5_delivery.sql`
 - CSV ingestion flow (app-side import into `normalized_transactions` + `ingestion_jobs`)
 - CSV validation + row-level reject reporting in Integrations
 - Connector pull + webhook ingestion implemented for Stripe, Square, and Authorize.net
 - Ingestion API edge function implementation: `supabase/functions/ingestion-api/index.ts`
+- Processor jobs edge function implementation: `supabase/functions/processor-jobs/index.ts`
+- Insights API edge function implementation: `supabase/functions/insights-api/index.ts`
 - Ingestion reliability baseline:
   - idempotency keys
   - retry metadata + `/v1/ingestion/jobs/:id/retry`
@@ -33,9 +36,12 @@ Processor-intelligence application for credit card processing companies. It inge
 
 1. Apply migration SQL in `supabase/migrations/20260214_processor_intelligence.sql`.
 2. Apply migration SQL in `supabase/migrations/20260214_ingestion_reliability.sql`.
-3. Deploy edge functions if needed:
+3. Apply migration SQL in `supabase/migrations/20260214_phase2_phase5_delivery.sql`.
+4. Deploy edge functions:
    - `supabase/functions/ai-chat`
    - `supabase/functions/ingestion-api`
+   - `supabase/functions/processor-jobs`
+   - `supabase/functions/insights-api`
 
 ## Connector Environment Variables (Edge Function)
 

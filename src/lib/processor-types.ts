@@ -77,6 +77,11 @@ export interface RiskEvent {
   reasons_json: Record<string, unknown> | null;
   detected_at: string;
   status: "open" | "acknowledged" | "resolved";
+  workflow_state: "new" | "investigating" | "resolved" | "false_positive";
+  owner_user_id: string | null;
+  sla_due_at: string | null;
+  resolved_at: string | null;
+  disposition_note: string | null;
 }
 
 export interface Recommendation {
@@ -88,6 +93,31 @@ export interface Recommendation {
   recommendation_text: string;
   expected_impact_json: Record<string, unknown> | null;
   status: "open" | "accepted" | "dismissed";
+  lifecycle_state: "open" | "accepted" | "rejected" | "deferred";
+  confidence: number | null;
+  analyst_feedback: "helpful" | "not_helpful" | null;
+  analyst_feedback_reason: string | null;
+  actioned_at: string | null;
+}
+
+export interface RiskCaseNote {
+  id: string;
+  company_id: string;
+  risk_event_id: string;
+  note: string;
+  attachment_ref: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AlertChannel {
+  id: string;
+  company_id: string;
+  channel_type: "slack" | "email" | "webhook";
+  destination: string;
+  min_severity: "low" | "medium" | "high" | "critical";
+  enabled: boolean;
+  created_at: string;
 }
 
 export interface MetricsSummary {

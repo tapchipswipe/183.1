@@ -376,6 +376,39 @@ async function pullProviderTransactions(
   });
 }
 
+async function runBackfillPull(
+  provider: Provider,
+  params: {
+    token?: string;
+    since?: string;
+    until?: string;
+    authorizeNetLoginId?: string;
+    authorizeNetTxKey?: string;
+    pages: number;
+  },
+) {
+  const all: NormalizedTx[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+
+  while (pages < params.pages) {
+    const pulled = await pullProviderTransactions(provider, {
+      token: params.token,
+      cursor,
+      since: params.since,
+      until: params.until,
+      authorizeNetLoginId: params.authorizeNetLoginId,
+      authorizeNetTxKey: params.authorizeNetTxKey,
+    });
+    all.push(...pulled.transactions);
+    pages += 1;
+    cursor = pulled.cursor ?? null;
+    if (!cursor || provider === "authorizenet") break;
+  }
+
+  return { transactions: all, pages, finalCursor: cursor };
+}
+
 async function validateWebhookSignature(
   provider: Provider,
   req: Request,
@@ -663,6 +696,88 @@ serve(async (req) => {
           })
           .eq("company_id", company_id)
           .eq("provider", provider);
+        return json({ job_id: jobId, status: "failed", error: message }, 500);
+      }
+    }
+
+    if (req.method === "POST" && path.includes("v1/connectors/") && path.endsWith("/backfill")) {
+      const provider = getProviderFromPath(path, "connectors");
+      if (!provider) return json({ error: "Invalid connector provider" }, 400);
+      const body = await req.json();
+      const { company_id, idempotency_key, max_retries, since, until, pages } = body;
+
+      const existing = await findJobByIdempotency(supabase, company_id, provider, idempotency_key ?? null);
+      if (existing) return json({ job_id: existing.id, deduplicated: true, status: existing.status });
+
+      const { data: job, error: createError } = await supabase
+        .from("ingestion_jobs")
+        .insert({
+          company_id,
+          source_type: provider,
+          source_ref: "historical-backfill",
+          status: "running",
+          idempotency_key: idempotency_key ?? null,
+          retry_count: 0,
+          max_retries: Number(max_retries ?? 3),
+          started_at: new Date().toISOString(),
+          stats_json: { note: "Backfill running", since, until, pages: Number(pages ?? 5) },
+        })
+        .select("id")
+        .single();
+      if (createError) throw createError;
+
+      const jobId = job.id as string;
+      try {
+        const connection = await loadConnection(supabase, company_id, provider);
+        const token = providerTokenFromEnv(provider, connection?.credentials_ref ?? null);
+        const loginId = Deno.env.get("AUTHORIZENET_API_LOGIN_ID");
+        const backfill = await runBackfillPull(provider, {
+          token: provider === "authorizenet" ? undefined : token ?? undefined,
+          since: since ?? undefined,
+          until: until ?? undefined,
+          authorizeNetLoginId: loginId ?? undefined,
+          authorizeNetTxKey: provider === "authorizenet" ? token ?? undefined : undefined,
+          pages: Number(pages ?? 5),
+        });
+
+        await upsertNormalizedTransactions(supabase, company_id, backfill.transactions);
+        await updateJob(supabase, jobId, {
+          status: "completed",
+          finished_at: new Date().toISOString(),
+          stats_json: {
+            ingested_rows: backfill.transactions.length,
+            pages_processed: backfill.pages,
+            final_cursor: backfill.finalCursor,
+            since,
+            until,
+          },
+          last_error: null,
+        });
+        await supabase
+          .from("processor_connections")
+          .update({
+            status: "connected",
+            last_sync_at: new Date().toISOString(),
+            last_error: null,
+            dead_letter_ref: null,
+          })
+          .eq("company_id", company_id)
+          .eq("provider", provider);
+        return json({
+          job_id: jobId,
+          status: "completed",
+          ingested_rows: backfill.transactions.length,
+          pages_processed: backfill.pages,
+          final_cursor: backfill.finalCursor,
+        });
+      } catch (error) {
+        const message = String(error);
+        await updateJob(supabase, jobId, {
+          status: "failed",
+          finished_at: new Date().toISOString(),
+          last_error: message,
+          error_json: { message },
+        });
         return json({ job_id: jobId, status: "failed", error: message }, 500);
       }
     }

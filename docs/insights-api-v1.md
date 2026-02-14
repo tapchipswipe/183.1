@@ -1,6 +1,18 @@
 # Insights API v1 Contract (Specification)
 
-This is a contract-first specification. Endpoints are documented now and implemented in later phases.
+This is a versioned specification and implementation target for external service clients.
+
+## Authentication
+
+All endpoints require:
+
+- `Authorization: Bearer <service_token>`
+
+Token model:
+
+- Service tokens are stored in `service_api_tokens`.
+- Incoming bearer token is SHA-256 hashed and matched against `token_hash`.
+- Token scopes are enforced per endpoint (`metrics:read`, `risk:read`, `merchant:read`, `recommendations:read`).
 
 ## Metrics
 
@@ -35,6 +47,11 @@ Response:
 ## Recommendations
 
 ### `GET /v1/recommendations?status&priority`
+
+## Implemented Function
+
+- Edge function: `supabase/functions/insights-api/index.ts`
+- Expected deployment route: `/functions/v1/insights-api/*`
 
 ## Event Types
 
