@@ -7,6 +7,10 @@ export interface ProcessorConnection {
   status: "connected" | "disconnected" | "error";
   credentials_ref: string | null;
   webhook_secret_ref: string | null;
+  last_sync_at: string | null;
+  retry_count: number | null;
+  last_error: string | null;
+  dead_letter_ref: string | null;
   created_at: string;
 }
 
@@ -15,11 +19,17 @@ export interface IngestionJob {
   company_id: string;
   source_type: Provider;
   source_ref: string | null;
+  idempotency_key: string | null;
   status: "queued" | "running" | "completed" | "failed";
+  retry_count: number | null;
+  max_retries: number | null;
+  next_retry_at: string | null;
+  last_error: string | null;
   started_at: string | null;
   finished_at: string | null;
   stats_json: Record<string, unknown> | null;
   error_json: Record<string, unknown> | null;
+  created_at?: string;
 }
 
 export interface NormalizedTransaction {

@@ -64,3 +64,68 @@ export function parseCsv(content: string): CsvRow[] {
     return row;
   });
 }
+
+export interface CsvReject {
+  row: number;
+  reason: string;
+}
+
+export interface NormalizedCsvTransactionDraft {
+  source_txn_id: string;
+  amount: number;
+  currency: string;
+  approved: boolean;
+  occurred_at: string;
+  payment_method: string;
+  raw_ref: string;
+}
+
+export function validateAndNormalizeCsvTransactions(content: string): {
+  validRows: NormalizedCsvTransactionDraft[];
+  rejectedRows: CsvReject[];
+} {
+  const parsed = parseCsv(content);
+  const validRows: NormalizedCsvTransactionDraft[] = [];
+  const rejectedRows: CsvReject[] = [];
+
+  for (let i = 0; i < parsed.length; i += 1) {
+    const row = parsed[i];
+    const rowNum = i + 2;
+
+    const amount = Number(row.amount ?? "");
+    if (!Number.isFinite(amount)) {
+      rejectedRows.push({ row: rowNum, reason: "Invalid amount" });
+      continue;
+    }
+
+    const occurred = new Date(row.occurred_at ?? "");
+    if (Number.isNaN(occurred.getTime())) {
+      rejectedRows.push({ row: rowNum, reason: "Invalid occurred_at timestamp" });
+      continue;
+    }
+
+    const currency = (row.currency || "USD").toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      rejectedRows.push({ row: rowNum, reason: "Invalid currency (must be ISO-4217 3 letters)" });
+      continue;
+    }
+
+    const approvedRaw = String(row.approved ?? "true").trim().toLowerCase();
+    if (!["true", "false", "1", "0", "yes", "no"].includes(approvedRaw)) {
+      rejectedRows.push({ row: rowNum, reason: "Invalid approved value (use true/false)" });
+      continue;
+    }
+
+    validRows.push({
+      source_txn_id: row.source_txn_id || crypto.randomUUID(),
+      amount,
+      currency,
+      approved: ["true", "1", "yes"].includes(approvedRaw),
+      occurred_at: occurred.toISOString(),
+      payment_method: row.payment_method || "card",
+      raw_ref: "csv-upload",
+    });
+  }
+
+  return { validRows, rejectedRows };
+}
