@@ -1,0 +1,66 @@
+import type { MetricsSummary, NormalizedTransaction } from "@/lib/processor-types";
+
+export function summarizeTransactions(rows: NormalizedTransaction[]): MetricsSummary {
+  const txCount = rows.length;
+  const revenue = rows.filter((r) => r.approved).reduce((s, r) => s + Number(r.amount || 0), 0);
+  const declines = rows.filter((r) => !r.approved).length;
+  const volume = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const approvalRate = txCount ? ((txCount - declines) / txCount) * 100 : 0;
+  const avgTicket = txCount ? revenue / txCount : 0;
+  const creditCardVolume = rows
+    .filter((r) => (r.payment_method || "").toLowerCase().includes("card") || !r.payment_method)
+    .reduce((s, r) => s + Number(r.amount || 0), 0);
+
+  return { volume, revenue, txCount, approvalRate, avgTicket, declines, creditCardVolume };
+}
+
+export function bucketByGranularity(
+  rows: NormalizedTransaction[],
+  mode: "day" | "week" | "month",
+): Array<{ id: string; period: string; txns: number; revenue: number }> {
+  const map = new Map<string, { txns: number; revenue: number }>();
+
+  for (const row of rows) {
+    const d = new Date(row.occurred_at);
+    if (Number.isNaN(d.getTime())) continue;
+
+    let key = d.toISOString().slice(0, 10);
+    if (mode === "week") {
+      const copy = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      const dayNum = copy.getUTCDay() || 7;
+      copy.setUTCDate(copy.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil((((copy.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+      key = `${copy.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+    }
+    if (mode === "month") {
+      key = d.toISOString().slice(0, 7);
+    }
+
+    const prev = map.get(key) ?? { txns: 0, revenue: 0 };
+    prev.txns += 1;
+    if (row.approved) prev.revenue += Number(row.amount || 0);
+    map.set(key, prev);
+  }
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([period, value], idx) => ({ id: `${period}-${idx}`, period, ...value }));
+}
+
+export type CsvRow = Record<string, string>;
+
+export function parseCsv(content: string): CsvRow[] {
+  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length <= 1) return [];
+  const headers = lines[0].split(",").map((h) => h.trim());
+
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",").map((c) => c.trim());
+    const row: CsvRow = {};
+    headers.forEach((h, i) => {
+      row[h] = cols[i] ?? "";
+    });
+    return row;
+  });
+}
