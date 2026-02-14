@@ -96,12 +96,19 @@ async function runDailyPipeline(supabase: ReturnType<typeof createClient>) {
     { job_type: 'alert_dispatch', severity_filter: 'critical' },
   ]
 
+  const stepResults: Array<{ job_type: string; status: 'ok' | 'skipped'; warning?: string }> = []
+
   for (const body of jobs) {
+    const jobType = String(body.job_type ?? 'unknown')
     const { error } = await supabase.functions.invoke('processor-jobs', { body, headers: invokeHeaders })
-    if (error) throw new Error(error.message)
+    if (error) {
+      stepResults.push({ job_type: jobType, status: 'skipped', warning: error.message })
+      continue
+    }
+    stepResults.push({ job_type: jobType, status: 'ok' })
   }
 
-  return { pipeline_steps: jobs.length }
+  return { pipeline_steps: jobs.length, step_results: stepResults }
 }
 
 async function runAnomalyRefresh(supabase: ReturnType<typeof createClient>) {
