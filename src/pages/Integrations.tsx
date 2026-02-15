@@ -5,277 +5,131 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable, type Column } from "@/components/DataTable";
-import type { IngestionJob, ProcessorConnection } from "@/lib/processor-types";
-import { validateAndNormalizeCsvTransactions, type CsvReject } from "@/lib/processor-utils";
 
-const providers = ["stripe", "square", "authorizenet"] as const;
-
-const providerRefs: Record<typeof providers[number], { credentials: string; webhook: string }> = {
-  stripe: { credentials: "STRIPE_SECRET_KEY", webhook: "STRIPE_WEBHOOK_SECRET" },
-  square: { credentials: "SQUARE_ACCESS_TOKEN", webhook: "SQUARE_WEBHOOK_SIGNATURE_KEY" },
-  authorizenet: { credentials: "AUTHORIZENET_TRANSACTION_KEY", webhook: "AUTHORIZENET_WEBHOOK_SIGNATURE_KEY" },
-};
+interface ProcessorConnectionRow {
+  id: string;
+  provider: "stripe" | "square" | "authorizenet";
+  account_id: string | null;
+  status: "active" | "inactive" | "error";
+  created_at: string;
+  updated_at: string;
+}
 
 export default function Integrations() {
-  const { userRole } = useAuth();
-  const companyId = userRole?.company_id;
-  const [csvText, setCsvText] = useState("source_txn_id,amount,currency,approved,occurred_at,payment_method\ntxn_1,42.50,USD,true,2026-02-14T00:00:00Z,card");
+  const { merchant } = useAuth();
+  const merchantId = merchant?.id;
+
+  const [stripeAccountId, setStripeAccountId] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
-  const [csvRejects, setCsvRejects] = useState<CsvReject[]>([]);
-  const [syncSince, setSyncSince] = useState("");
-  const [syncUntil, setSyncUntil] = useState("");
-  const [backfillPages, setBackfillPages] = useState("5");
 
-  const hashCsv = async (text: string) => {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-    return Array.from(new Uint8Array(digest)).map((x) => x.toString(16).padStart(2, "0")).join("");
-  };
+  const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingestion-webhook/stripe`;
 
-  const { data: connections = [], refetch: refetchConnections } = useQuery({
-    queryKey: ["processor-connections", companyId],
-    enabled: !!companyId,
+  const { data: connections = [], isLoading, refetch } = useQuery({
+    queryKey: ["processor-connections", merchantId],
+    enabled: !!merchantId,
     queryFn: async () => {
-      if (!companyId) return [];
-      const { data, error } = await supabase.from("processor_connections").select("*").eq("company_id", companyId);
-      if (error) return [];
-      return (data ?? []) as ProcessorConnection[];
+      if (!merchantId) return [];
+      const { data, error } = await supabase
+        .from("processor_connections")
+        .select("id, provider, account_id, status, created_at, updated_at")
+        .eq("merchant_id", merchantId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as ProcessorConnectionRow[];
     },
   });
 
-  const { data: jobs = [], refetch: refetchJobs } = useQuery({
-    queryKey: ["ingestion-jobs", companyId],
-    enabled: !!companyId,
-    queryFn: async () => {
-      if (!companyId) return [];
-      const { data, error } = await supabase.from("ingestion_jobs").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100);
-      if (error) return [];
-      return (data ?? []) as IngestionJob[];
-    },
-  });
-
-  const connectProvider = async (provider: typeof providers[number]) => {
-    if (!companyId) return;
-    const { error } = await supabase.from("processor_connections").upsert(
-      {
-        company_id: companyId,
-        provider,
-        status: "connected",
-        credentials_ref: providerRefs[provider].credentials,
-        webhook_secret_ref: providerRefs[provider].webhook,
-        retry_count: 0,
-        last_error: null,
-        dead_letter_ref: null,
-      },
-      { onConflict: "company_id,provider" },
-    );
+  const connectStripe = async () => {
+    if (!merchantId) return;
+    setStatusMessage("");
+    const payload = {
+      merchant_id: merchantId,
+      provider: "stripe",
+      account_id: stripeAccountId.trim() || null,
+      status: "active",
+      credentials_encrypted: {},
+    };
+    const { error } = await supabase.from("processor_connections").insert(payload);
     if (error) {
-      setStatusMessage(`Failed to connect ${provider}: ${error.message}`);
+      setStatusMessage(`Failed to add Stripe connection: ${error.message}`);
       return;
     }
-    setStatusMessage(`${provider} connected`);
-    refetchConnections();
+    setStripeAccountId("");
+    setStatusMessage("Stripe connection saved.");
+    refetch();
   };
 
-  const runSync = async (provider: typeof providers[number]) => {
-    if (!companyId) return;
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-    if (!accessToken) {
-      setStatusMessage("No active session token");
+  const deactivate = async (id: string) => {
+    const { error } = await supabase.from("processor_connections").update({ status: "inactive" }).eq("id", id);
+    if (error) {
+      setStatusMessage(`Failed to deactivate: ${error.message}`);
       return;
     }
-
-    const endpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingestion-api/v1/connectors/${provider}/sync`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-      },
-      body: JSON.stringify({
-        company_id: companyId,
-        idempotency_key: `manual-sync:${provider}:${new Date().toISOString().slice(0, 16)}`,
-        max_retries: 3,
-        since: syncSince || undefined,
-        until: syncUntil || undefined,
-      }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      setStatusMessage(`Failed to run ${provider} sync: ${payload.error ?? "unknown error"}`);
-      return;
-    }
-    setStatusMessage(`${provider} sync ${payload.status} (${payload.ingested_rows ?? 0} rows)`);
-    refetchConnections();
-    refetchJobs();
+    setStatusMessage("Connection deactivated.");
+    refetch();
   };
 
-  const runBackfill = async (provider: typeof providers[number]) => {
-    if (!companyId) return;
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-    if (!accessToken) {
-      setStatusMessage("No active session token");
-      return;
-    }
-    const endpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingestion-api/v1/connectors/${provider}/backfill`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-      },
-      body: JSON.stringify({
-        company_id: companyId,
-        idempotency_key: `backfill:${provider}:${syncSince}:${syncUntil}:${backfillPages}`,
-        max_retries: 3,
-        since: syncSince || undefined,
-        until: syncUntil || undefined,
-        pages: Number(backfillPages || "5"),
-      }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      setStatusMessage(`Backfill failed for ${provider}: ${payload.error ?? "unknown error"}`);
-      return;
-    }
-    setStatusMessage(`${provider} backfill completed (${payload.ingested_rows ?? 0} rows, ${payload.pages_processed ?? 0} pages)`);
-    refetchConnections();
-    refetchJobs();
-  };
-
-  const runCsvImport = async () => {
-    if (!companyId) return;
-    const { validRows, rejectedRows } = validateAndNormalizeCsvTransactions(csvText);
-    setCsvRejects(rejectedRows);
-
-    if (validRows.length === 0) {
-      setStatusMessage("CSV import rejected: no valid rows");
-      return;
-    }
-    const normalized = validRows.map((r) => ({
-      company_id: companyId,
-      source_provider: "csv",
-      source_txn_id: r.source_txn_id,
-      amount: r.amount,
-      currency: r.currency,
-      approved: r.approved,
-      occurred_at: r.occurred_at,
-      payment_method: r.payment_method,
-      raw_ref: r.raw_ref,
-    }));
-    const idempotencyKey = `csv:${await hashCsv(csvText)}`;
-
-    const { error: txError } = await supabase.from("normalized_transactions").upsert(normalized, {
-      onConflict: "company_id,source_provider,source_txn_id",
-      ignoreDuplicates: false,
-    });
-
-    const { error: jobError } = await supabase.from("ingestion_jobs").insert({
-      company_id: companyId,
-      source_type: "csv",
-      source_ref: "manual-csv",
-      status: txError ? "failed" : "completed",
-      idempotency_key: idempotencyKey,
-      retry_count: 0,
-      max_retries: 3,
-      started_at: new Date().toISOString(),
-      finished_at: new Date().toISOString(),
-      stats_json: { ingested_rows: normalized.length, rejected_rows: rejectedRows.length },
-      error_json: txError ? { message: txError.message, rejected_rows: rejectedRows } : null,
-      last_error: txError?.message ?? null,
-    });
-
-    if (txError || jobError) {
-      setStatusMessage(`CSV import failed: ${(txError || jobError)?.message}`);
-    } else if (rejectedRows.length) {
-      setStatusMessage(`CSV import completed with partial reject report (${normalized.length} ingested, ${rejectedRows.length} rejected)`);
-    } else {
-      setStatusMessage(`CSV import completed (${normalized.length} rows)`);
-    }
-    refetchJobs();
-  };
-
-  const connectionColumns: Column<ProcessorConnection>[] = useMemo(() => [
+  const columns: Column<ProcessorConnectionRow>[] = useMemo(() => [
     { key: "provider", label: "Provider" },
+    { key: "account_id", label: "Account", render: (r) => r.account_id ?? "(default)" },
     { key: "status", label: "Status" },
-    { key: "last_sync_at", label: "Last Sync", render: (r) => (r.last_sync_at ? new Date(r.last_sync_at).toLocaleString() : "Never") },
-    { key: "retry_count", label: "Retries", render: (r) => String(r.retry_count ?? 0) },
-    { key: "created_at", label: "Connected", render: (r) => new Date(r.created_at).toLocaleString() },
-  ], []);
-
-  const jobColumns: Column<IngestionJob>[] = useMemo(() => [
-    { key: "source_type", label: "Source" },
-    { key: "status", label: "Status" },
-    { key: "retry_count", label: "Retries", render: (r) => String(r.retry_count ?? 0) },
-    { key: "idempotency_key", label: "Idempotency", render: (r) => (r.idempotency_key ? `${r.idempotency_key.slice(0, 12)}...` : "N/A") },
-    { key: "created_at", label: "Created", render: (r) => new Date((r as any).created_at ?? r.started_at ?? Date.now()).toLocaleString() },
+    { key: "created_at", label: "Created", render: (r) => new Date(r.created_at).toLocaleString() },
+    {
+      key: "actions",
+      label: "Actions",
+      render: (r) => (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-2xs"
+            onClick={() => deactivate(r.id)}
+            disabled={r.status !== "active"}
+          >
+            Deactivate
+          </Button>
+        </div>
+      ),
+    },
   ], []);
 
   return (
     <div className="space-y-4">
-      <h1 className="text-sm font-semibold">Integrations</h1>
-      <p className="text-xs text-muted-foreground">Connect Stripe/Square/Authorize.net and ingest historical data with CSV.</p>
-
-      <div className="flex flex-wrap gap-2">
-        {providers.map((p) => (
-          <div key={p} className="flex items-center gap-1">
-            <Button size="sm" onClick={() => connectProvider(p)}>Connect {p}</Button>
-            <Button size="sm" variant="outline" onClick={() => runSync(p)}>Sync {p}</Button>
-            <Button size="sm" variant="outline" onClick={() => runBackfill(p)}>Backfill {p}</Button>
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-        <Input value={syncSince} onChange={(e) => setSyncSince(e.target.value)} placeholder="since (ISO, optional)" />
-        <Input value={syncUntil} onChange={(e) => setSyncUntil(e.target.value)} placeholder="until (ISO, optional)" />
-        <Input value={backfillPages} onChange={(e) => setBackfillPages(e.target.value)} placeholder="backfill pages (default 5)" />
+      <div>
+        <h1 className="text-sm font-semibold">Integrations</h1>
+        <p className="text-xs text-muted-foreground">
+          Connect processors and configure ingestion. For Stripe webhooks, point Stripe to the URL below.
+        </p>
       </div>
 
-      <div className="space-y-2">
-        <label className="text-xs text-muted-foreground">CSV / Excel (paste CSV) Bulk Import</label>
-        <textarea
-          value={csvText}
-          onChange={(e) => setCsvText(e.target.value)}
-          className="min-h-36 w-full rounded-md border bg-background p-2 text-xs"
-        />
-        <div className="flex gap-2">
+      <div className="rounded-md border p-3">
+        <p className="text-xs font-semibold">Stripe Webhook URL</p>
+        <p className="mt-1 font-mono text-2xs break-all">{functionUrl}</p>
+        <p className="mt-2 text-2xs text-muted-foreground">
+          Configure the Edge Function secret `STRIPE_WEBHOOK_SECRET` to match Stripe.
+          If you use Stripe Connect, set the connection `Account ID` to match the incoming `Stripe-Account` header.
+        </p>
+      </div>
+
+      <div className="rounded-md border p-3 space-y-2">
+        <p className="text-xs font-semibold">Add Stripe Connection</p>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
           <Input
-            type="file"
-            accept=".csv,text/csv"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              setCsvText(await file.text());
-            }}
+            value={stripeAccountId}
+            onChange={(e) => setStripeAccountId(e.target.value)}
+            placeholder="Stripe Account ID (optional, e.g. acct_...)"
           />
-          <Button onClick={runCsvImport}>Run CSV Import</Button>
+          <div className="md:col-span-2 flex gap-2">
+            <Button size="sm" onClick={connectStripe} disabled={!merchantId}>
+              Save
+            </Button>
+          </div>
         </div>
         {statusMessage && <p className="text-xs text-muted-foreground">{statusMessage}</p>}
-        {csvRejects.length > 0 && (
-          <div className="rounded-md border p-2">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">CSV Reject Report (first 20)</p>
-            <div className="space-y-1 text-xs">
-              {csvRejects.slice(0, 20).map((reject) => (
-                <p key={`${reject.row}-${reject.reason}`}>Row {reject.row}: {reject.reason}</p>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Connections</h2>
-          <DataTable data={connections} columns={connectionColumns} />
-        </div>
-        <div>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ingestion Jobs</h2>
-          <DataTable data={jobs} columns={jobColumns} />
-        </div>
-      </div>
+      <DataTable data={connections} columns={columns} loading={isLoading} />
     </div>
   );
 }
+

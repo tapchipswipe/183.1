@@ -1,23 +1,11 @@
 import {
   BarChart3,
   LayoutDashboard,
-  Building2,
-  ShieldAlert,
   Sparkles,
   Lightbulb,
   Network,
-  ShieldCheck,
   Package,
-  Users,
-  Truck,
-  ClipboardList,
   ArrowLeftRight,
-  ShoppingCart,
-  FileBarChart,
-  Wallet,
-  Brain,
-  Upload,
-  UsersRound,
   Settings,
   LogOut,
   ChevronDown,
@@ -49,37 +37,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
-const processorNav = [
-  { title: "Monitoring", url: "/", icon: LayoutDashboard },
-  { title: "Merchants", url: "/merchants", icon: Building2 },
-  { title: "Risk", url: "/risk", icon: ShieldAlert },
+const one82Nav = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Transactions", url: "/transactions", icon: ArrowLeftRight },
+  { title: "Products", url: "/products", icon: Package },
+  { title: "Integrations", url: "/integrations", icon: Network },
   { title: "Insights", url: "/insights", icon: Sparkles },
   { title: "Recommendations", url: "/recommendations", icon: Lightbulb },
-  { title: "Integrations", url: "/integrations", icon: Network },
-  { title: "Compliance", url: "/compliance", icon: ShieldCheck },
-];
-
-const legacyDataNav = [
-  { title: "Dashboard", url: "/legacy/dashboard", icon: LayoutDashboard },
-  { title: "Products", url: "/legacy/products", icon: Package },
-  { title: "Customers", url: "/legacy/customers", icon: Users },
-  { title: "Suppliers", url: "/legacy/suppliers", icon: Truck },
-  { title: "Purchase Orders", url: "/legacy/purchase-orders", icon: ClipboardList },
-  { title: "Transactions", url: "/legacy/transactions", icon: ArrowLeftRight },
-];
-
-const legacyToolsNav = [
-  { title: "POS", url: "/legacy/pos", icon: ShoppingCart },
-  { title: "Reports", url: "/legacy/reports", icon: FileBarChart },
-  { title: "Expenses", url: "/legacy/expenses", icon: Wallet },
-  { title: "AI Advisor", url: "/ai", icon: Brain },
-  { title: "Import Data", url: "/legacy/import", icon: Upload },
-  { title: "Team", url: "/legacy/team", icon: UsersRound },
-  { title: "Settings", url: "/legacy/settings", icon: Settings },
-];
+  { title: "Settings", url: "/settings", icon: Settings },
+] as const;
 
 export function AppSidebar() {
-  const { profile, userRole, signOut } = useAuth();
+  const { profile, merchant, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -90,8 +59,8 @@ export function AppSidebar() {
             <BarChart3 className="h-4 w-4 text-sidebar-primary-foreground" />
           </div>
           <div className="flex flex-col">
-            <span className="text-xs font-semibold text-sidebar-foreground">Processor Intelligence</span>
-            <span className="text-2xs text-sidebar-foreground/60">{userRole?.role ?? "member"}</span>
+            <span className="text-xs font-semibold text-sidebar-foreground">One82</span>
+            <span className="text-2xs text-sidebar-foreground/60">{merchant?.business_name ?? "Workspace"}</span>
           </div>
         </div>
       </SidebarHeader>
@@ -100,56 +69,10 @@ export function AppSidebar() {
 
       <SidebarContent className="flex-1 overflow-auto">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-2xs uppercase tracking-wider">Processor</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-2xs uppercase tracking-wider">Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {processorNav.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild size="sm">
-                    <NavLink
-                      to={item.url}
-                      end
-                      className="hover:bg-sidebar-accent/50"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    >
-                      <item.icon className="h-3.5 w-3.5" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-2xs uppercase tracking-wider">Legacy Data</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {legacyDataNav.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild size="sm">
-                    <NavLink
-                      to={item.url}
-                      end
-                      className="hover:bg-sidebar-accent/50"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    >
-                      <item.icon className="h-3.5 w-3.5" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-2xs uppercase tracking-wider">Legacy Tools</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {legacyToolsNav.map((item) => (
+              {one82Nav.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild size="sm">
                     <NavLink

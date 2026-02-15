@@ -8,21 +8,23 @@ import { Badge } from "@/components/ui/badge";
 
 interface TransactionRow {
   id: string;
-  type: string;
-  amount: number | null;
-  currency: string | null;
+  processor: string;
+  external_transaction_id: string;
+  occurred_at: string;
+  amount: number;
+  currency: string;
   status: string | null;
   description: string | null;
-  transaction_date: string | null;
 }
 
 const fields: FormField[] = [
-  { key: "type", label: "Type", required: true },
+  { key: "processor", label: "Processor", required: true },
+  { key: "external_transaction_id", label: "External ID" },
+  { key: "occurred_at", label: "Date", type: "date", required: true },
   { key: "amount", label: "Amount", type: "number", required: true },
   { key: "currency", label: "Currency" },
   { key: "status", label: "Status" },
   { key: "description", label: "Description" },
-  { key: "transaction_date", label: "Date", type: "date" },
 ];
 
 function statusClass(status: string | null) {
@@ -34,31 +36,33 @@ function statusClass(status: string | null) {
 }
 
 export default function Transactions() {
-  const { userRole } = useAuth();
-  const companyId = userRole?.company_id;
+  const { merchant } = useAuth();
+  const merchantId = merchant?.id;
 
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({
-    type: "sale",
+    processor: "manual",
+    external_transaction_id: "",
+    occurred_at: new Date().toISOString().slice(0, 10),
     amount: "",
     currency: "USD",
     status: "completed",
     description: "",
-    transaction_date: new Date().toISOString().slice(0, 10),
   });
 
   const { data = [], isLoading, refetch } = useQuery({
-    queryKey: ["transactions", companyId],
-    enabled: !!companyId,
+    queryKey: ["transactions", merchantId],
+    enabled: !!merchantId,
     queryFn: async () => {
-      if (!companyId) return [];
+      if (!merchantId) return [];
       const { data, error } = await supabase
         .from("transactions")
-        .select("id, type, amount, currency, status, description, transaction_date")
-        .eq("company_id", companyId)
-        .order("transaction_date", { ascending: false });
+        .select("id, processor, external_transaction_id, occurred_at, amount, currency, status, description")
+        .eq("merchant_id", merchantId)
+        .order("occurred_at", { ascending: false })
+        .limit(500);
       if (error) throw error;
       return (data ?? []) as TransactionRow[];
     },
@@ -67,14 +71,15 @@ export default function Transactions() {
   const columns: Column<TransactionRow>[] = useMemo(
     () => [
       {
-        key: "type",
-        label: "Type",
+        key: "processor",
+        label: "Processor",
         render: (r) => (
           <Badge variant="outline" className="capitalize">
-            {r.type}
+            {r.processor}
           </Badge>
         ),
       },
+      { key: "external_transaction_id", label: "External ID" },
       { key: "description", label: "Description" },
       {
         key: "amount",
@@ -91,10 +96,10 @@ export default function Transactions() {
         ),
       },
       {
-        key: "transaction_date",
+        key: "occurred_at",
         label: "Date",
         render: (r) =>
-          r.transaction_date ? new Date(r.transaction_date).toLocaleDateString() : "—",
+          r.occurred_at ? new Date(r.occurred_at).toLocaleString() : "—",
       },
     ],
     []
@@ -103,12 +108,13 @@ export default function Transactions() {
   const resetForm = () => {
     setEditingId(null);
     setValues({
-      type: "sale",
+      processor: "manual",
+      external_transaction_id: "",
+      occurred_at: new Date().toISOString().slice(0, 10),
       amount: "",
       currency: "USD",
       status: "completed",
       description: "",
-      transaction_date: new Date().toISOString().slice(0, 10),
     });
   };
 
@@ -120,36 +126,41 @@ export default function Transactions() {
   const openEdit = (row: TransactionRow) => {
     setEditingId(row.id);
     setValues({
-      type: row.type ?? "sale",
+      processor: row.processor ?? "manual",
+      external_transaction_id: row.external_transaction_id ?? "",
+      occurred_at: row.occurred_at ? new Date(row.occurred_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       amount: row.amount == null ? "" : String(row.amount),
       currency: row.currency ?? "USD",
       status: row.status ?? "completed",
       description: row.description ?? "",
-      transaction_date: row.transaction_date
-        ? new Date(row.transaction_date).toISOString().slice(0, 10)
-        : new Date().toISOString().slice(0, 10),
     });
     setOpen(true);
   };
 
   const save = async () => {
-    if (!companyId) return;
+    if (!merchantId) return;
     setSaving(true);
+    const occurredAtIso = values.occurred_at
+      ? new Date(values.occurred_at).toISOString()
+      : new Date().toISOString();
+    const extId =
+      values.external_transaction_id.trim() ||
+      `manual_${new Date().toISOString().replace(/\\D/g, "")}`;
+
     const payload = {
-      type: values.type.trim() || "sale",
       amount: values.amount ? Number(values.amount) : 0,
       currency: values.currency.trim() || "USD",
       status: values.status.trim() || "completed",
       description: values.description.trim() || null,
-      transaction_date: values.transaction_date
-        ? new Date(values.transaction_date).toISOString()
-        : new Date().toISOString(),
+      occurred_at: occurredAtIso,
+      processor: values.processor.trim() || "manual",
+      external_transaction_id: extId,
     };
 
     if (editingId) {
       await supabase.from("transactions").update(payload).eq("id", editingId);
     } else {
-      await supabase.from("transactions").insert({ ...payload, company_id: companyId });
+      await supabase.from("transactions").insert({ ...payload, merchant_id: merchantId });
     }
     setSaving(false);
     setOpen(false);

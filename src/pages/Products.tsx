@@ -9,24 +9,24 @@ interface ProductRow {
   id: string;
   name: string;
   sku: string | null;
-  category: string | null;
   price: number | null;
-  quantity: number | null;
-  description: string | null;
+  unit_cost: number | null;
+  current_quantity: number | null;
+  active: boolean;
 }
 
 const fields: FormField[] = [
   { key: "name", label: "Name", required: true },
   { key: "sku", label: "SKU" },
-  { key: "category", label: "Category" },
-  { key: "price", label: "Price", type: "number" },
-  { key: "quantity", label: "Quantity", type: "number" },
-  { key: "description", label: "Description" },
+  { key: "price", label: "Unit Price", type: "number" },
+  { key: "unit_cost", label: "Unit Cost", type: "number" },
+  { key: "current_quantity", label: "On Hand", type: "number" },
+  { key: "active", label: "Active (true/false)" },
 ];
 
 export default function Products() {
-  const { userRole } = useAuth();
-  const companyId = userRole?.company_id;
+  const { merchant } = useAuth();
+  const merchantId = merchant?.id;
 
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -34,21 +34,21 @@ export default function Products() {
   const [values, setValues] = useState<Record<string, string>>({
     name: "",
     sku: "",
-    category: "",
     price: "",
-    quantity: "",
-    description: "",
+    unit_cost: "",
+    current_quantity: "",
+    active: "true",
   });
 
   const { data = [], isLoading, refetch } = useQuery({
-    queryKey: ["products", companyId],
-    enabled: !!companyId,
+    queryKey: ["products", merchantId],
+    enabled: !!merchantId,
     queryFn: async () => {
-      if (!companyId) return [];
+      if (!merchantId) return [];
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, sku, category, price, quantity, description")
-        .eq("company_id", companyId)
+        .select("id, name, sku, price, unit_cost, current_quantity, active")
+        .eq("merchant_id", merchantId)
         .order("name");
       if (error) throw error;
       return (data ?? []) as ProductRow[];
@@ -59,9 +59,10 @@ export default function Products() {
     () => [
       { key: "name", label: "Name" },
       { key: "sku", label: "SKU" },
-      { key: "category", label: "Category" },
-      { key: "price", label: "Price", render: (r) => `$${Number(r.price ?? 0).toFixed(2)}` },
-      { key: "quantity", label: "Stock" },
+      { key: "price", label: "Unit Price", render: (r) => `$${Number(r.price ?? 0).toFixed(2)}` },
+      { key: "unit_cost", label: "Unit Cost", render: (r) => (r.unit_cost == null ? "—" : `$${Number(r.unit_cost).toFixed(2)}`) },
+      { key: "current_quantity", label: "On Hand", render: (r) => String(r.current_quantity ?? 0) },
+      { key: "active", label: "Active", render: (r) => (r.active ? "Yes" : "No") },
     ],
     []
   );
@@ -71,10 +72,10 @@ export default function Products() {
     setValues({
       name: "",
       sku: "",
-      category: "",
       price: "",
-      quantity: "",
-      description: "",
+      unit_cost: "",
+      current_quantity: "",
+      active: "true",
     });
   };
 
@@ -88,30 +89,30 @@ export default function Products() {
     setValues({
       name: row.name ?? "",
       sku: row.sku ?? "",
-      category: row.category ?? "",
       price: row.price == null ? "" : String(row.price),
-      quantity: row.quantity == null ? "" : String(row.quantity),
-      description: row.description ?? "",
+      unit_cost: row.unit_cost == null ? "" : String(row.unit_cost),
+      current_quantity: row.current_quantity == null ? "" : String(row.current_quantity),
+      active: row.active ? "true" : "false",
     });
     setOpen(true);
   };
 
   const save = async () => {
-    if (!companyId) return;
+    if (!merchantId) return;
     setSaving(true);
     const payload = {
       name: values.name.trim(),
       sku: values.sku.trim() || null,
-      category: values.category.trim() || null,
-      description: values.description.trim() || null,
       price: values.price ? Number(values.price) : 0,
-      quantity: values.quantity ? Number(values.quantity) : 0,
+      unit_cost: values.unit_cost ? Number(values.unit_cost) : null,
+      current_quantity: values.current_quantity ? Number(values.current_quantity) : 0,
+      active: (values.active ?? "true").trim().toLowerCase() !== "false",
     };
 
     if (editingId) {
       await supabase.from("products").update(payload).eq("id", editingId);
     } else {
-      await supabase.from("products").insert({ ...payload, company_id: companyId });
+      await supabase.from("products").insert({ ...payload, merchant_id: merchantId });
     }
     setSaving(false);
     setOpen(false);

@@ -6,33 +6,40 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CURRENCIES } from "@/lib/currencies";
 
 export default function SettingsPage() {
-  const { user, profile, userRole } = useAuth();
+  const { user, profile, merchant } = useAuth();
   const { theme, setTheme } = useTheme();
 
   const [name, setName] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [businessName, setBusinessName] = useState("");
+  const [industry, setIndustry] = useState("");
   const [password, setPassword] = useState("");
 
   useEffect(() => {
     setName(profile?.full_name ?? "");
   }, [profile?.full_name]);
 
+  useEffect(() => {
+    setBusinessName(merchant?.business_name ?? "");
+    setIndustry(merchant?.industry ?? "");
+  }, [merchant?.business_name, merchant?.industry]);
+
   const saveProfile = async () => {
     if (!profile?.id) return;
     await supabase.from("profiles").update({ full_name: name.trim() || null }).eq("id", profile.id);
   };
 
-  const saveCompany = async () => {
-    if (!userRole?.company_id) return;
+  const saveMerchant = async () => {
+    if (!merchant?.id) return;
     await supabase
-      .from("companies")
-      .update({ name: companyName.trim() || "My Company", default_currency: currency })
-      .eq("id", userRole.company_id);
+      .from("merchants")
+      .update({
+        business_name: businessName.trim() || "My Business",
+        industry: industry.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", merchant.id);
   };
 
   const updatePassword = async () => {
@@ -48,7 +55,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="profile">
         <TabsList className="h-8">
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="company">Company</TabsTrigger>
+          <TabsTrigger value="merchant">Business</TabsTrigger>
           <TabsTrigger value="theme">Theme</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
         </TabsList>
@@ -70,26 +77,19 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="company" className="mt-3">
+        <TabsContent value="merchant" className="mt-3">
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm">Company</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">Business</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Company Name</label>
-                <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Your company" />
+                <label className="mb-1 block text-xs text-muted-foreground">Business Name</label>
+                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Your business" />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Default Currency</label>
-                <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger><SelectValue placeholder="Select currency" /></SelectTrigger>
-                  <SelectContent>
-                    {CURRENCIES.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{c.code} - {c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <label className="mb-1 block text-xs text-muted-foreground">Industry</label>
+                <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Retail, restaurant, service, ..." />
               </div>
-              <Button size="sm" onClick={saveCompany}>Save Company</Button>
+              <Button size="sm" onClick={saveMerchant} disabled={!merchant?.id}>Save Business</Button>
             </CardContent>
           </Card>
         </TabsContent>
