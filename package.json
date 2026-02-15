@@ -1,12 +1,15 @@
 {
-  "name": "business-insights-app",
+  "name": "one82",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "supabase:serve": "supabase functions serve",
+    "supabase:deploy": "supabase functions deploy",
+    "supabase:deploy:ingestion-webhook": "supabase functions deploy ingestion-webhook"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
@@ -30,3 +33,4 @@
     "vite": "^7.1.12"
   }
 }
+

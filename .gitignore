@@ -1,6 +1,37 @@
-node_modules/
-dist/
-coverage/
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Supabase generated
+.supabase/
+
+# Secrets / keys
+*.key
+*.pem
+secrets/
+credentials/
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+
+# Build output
+dist/
+build/
+coverage/
+*.log
 *.tsbuildinfo
+
+# OS / editor
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.backup
+.secrets_backup_*.json
+
