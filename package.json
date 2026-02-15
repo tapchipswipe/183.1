@@ -1,0 +1,1 @@
+{ "name": "payments-anomaly", "version": "1.0.0", "scripts": { "dev": "supabase functions serve", "deploy": "supabase functions deploy" } }
