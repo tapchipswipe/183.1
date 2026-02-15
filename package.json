@@ -1,1 +1,12 @@
-{ "name": "payments-anomaly", "version": "1.0.0", "scripts": { "dev": "supabase functions serve", "deploy": "supabase functions deploy" } }
+{
+  "name": "ai-business-insights",
+  "version": "1.0.0",
+  "description": "AI-powered transaction analytics for business growth",
+  "scripts": {
+    "dev": "supabase functions serve",
+    "deploy": "supabase functions deploy",
+    "insights": "supabase functions deploy insights-generator",
+    "inventory": "supabase functions deploy inventory-predictor",
+    "seasonal": "supabase functions deploy seasonal-analyzer"
+  }
+}
