@@ -31,3 +31,5 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+*.backup
+.secrets_backup_*.json
