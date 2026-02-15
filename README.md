@@ -82,3 +82,7 @@ Later phases will add:
 - Release governance and environment promotion
 
 See `code.md` for the full roadmap and detailed implementation notes.
+
+## Script Usage
+DRY_RUN=1 ./scripts/phase_a_activate.sh - Test without changes
+See code.md for full implementation details
