@@ -22,7 +22,12 @@ pnpm-lock.yaml
 dist/
 build/
 coverage/
+.next/
 *.log
+*.tsbuildinfo
+
+# Supabase local temp
+supabase/.temp/
 
 # OS / editor
 .DS_Store
