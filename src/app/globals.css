@@ -12,3 +12,6 @@ body {
   color: #e6edf3;
 }
 
+a {
+  color: inherit;
+}
