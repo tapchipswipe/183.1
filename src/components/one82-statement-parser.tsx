@@ -26,13 +26,21 @@ export function StatementUploader() {
   const [results, setResults] = useState<StatementResult | null>(null);
 
   const analyzeStatement = async (f: File): Promise<StatementResult> => {
-    const kb = Math.round((f.size / 1024) * 10) / 10;
+    const res = await fetch("/api/statements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: f.name, size: f.size, type: f.type }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload?.error ?? "Statement API request failed");
+    }
     return {
       transactions: 0,
       volume: "0.00",
       fees: "0.00",
       feeRate: "0.00",
-      aiSummary: `Statement received (${kb} KB). Connect the statement analyzer backend to extract transactions.`,
+      aiSummary: String(payload?.message ?? "Statement received."),
       confidence: 0.3,
     };
   };
@@ -123,4 +131,3 @@ export function StatementUploader() {
 }
 
 export default StatementUploader;
-

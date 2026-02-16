@@ -1,5 +1,5 @@
-import { MultiMerchantDashboard } from "../components/multi-merchant-dashboard";
+import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  return <MultiMerchantDashboard />;
+  redirect("/dashboard");
 }
