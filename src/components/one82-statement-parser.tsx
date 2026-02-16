@@ -1,121 +1,77 @@
-/**********************************************************************
- * One82 STATEMENT PARSER - AI Vision (Single File)
- * 
- * FEATURES:
- * ✅ Drag-drop PDF/image upload
- * ✅ GPT-4o Vision extracts transactions
- * ✅ Calculates volume/fees/rates
- * ✅ AI business insights
- * ✅ Shopify-inspired UI
- * ✅ Production-ready
- * 
- * USAGE:
- * npm install openai lucide-react react
- * Save as one82-statement-parser.tsx → Import StatementUploader
- **********************************************************************/
+/**
+ * One82 Statement Uploader (client).
+ *
+ * Uploads a PDF/image to the server route `/api/statements` which performs AI extraction
+ * and inserts transactions into Supabase.
+ */
 
-'use client'
-import { useState } from 'react'
-import { Upload, FileText, CheckCircle, Sparkles } from 'lucide-react'
-import OpenAI from 'openai'
+"use client";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Upload, FileText, CheckCircle } from "lucide-react";
+import { supabase } from "../lib/supabase/client";
 
-// ===== TYPES =====
 interface StatementResult {
-  transactions: number
-  volume: string
-  fees: string
-  feeRate: string
-  aiSummary: string
-  confidence: number
+  inserted_transactions: number;
+  currency: string;
+  total_volume: number;
+  total_fees: number | null;
+  confidence: number | null;
+  message: string;
 }
 
-// ===== MAIN COMPONENT =====
-export function StatementUploader() {
-  const [file, setFile] = useState<File | null>(null)
-  const [status, setStatus] = useState<'idle' | 'processing' | 'complete'>('idle')
-  const [results, setResults] = useState<StatementResult | null>(null)
+export default function StatementUploader() {
+  const router = useRouter();
+  const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<"idle" | "processing" | "complete" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<StatementResult | null>(null);
 
-  const analyzeStatement = async (file: File): Promise<StatementResult> => {
-    // Convert to base64
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const base64 = `${file.type};base64,${buffer.toString('base64')}`
+  const upload = async () => {
+    setError(null);
+    setResult(null);
+    if (!file) return;
+    setStatus("processing");
 
-    // GPT-4o Vision API
-    const visionResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `One82 Statement Analyzer. Extract ALL transactions from merchant statements.
-          JSON format ONLY: {transactions: number, totalVolume: number, totalFees: number, topCategory: string}`
-        },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Extract transactions, fees, calculate totals.' },
-            { type: 'image_url', image_url: { url: base64 } }
-          ]
-        }
-      ],
-      max_tokens: 1500
-    })
-
-    const extracted = JSON.parse(visionResponse.choices[0]!.message.content!)
-    const feeRate = ((extracted.totalFees / extracted.totalVolume) * 100).toFixed(2)
-
-    // AI Business Insights
-    const insightResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{
-        role: 'user',
-        content: `Analyze statement: ${JSON.stringify(extracted)}.
-        Provide 1 actionable business recommendation.`
-      }]
-    })
-
-    return {
-      transactions: extracted.transactions || 0,
-      volume: extracted.totalVolume?.toFixed(2) || '0.00',
-      fees: extracted.totalFees?.toFixed(2) || '0.00',
-      feeRate,
-      aiSummary: insightResponse.choices[0]!.message.content!,
-      confidence: 0.96
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setStatus("error");
+      setError("You must be signed in.");
+      return;
     }
-  }
 
-  const handleUpload = async () => {
-    if (!file) return
-    setStatus('processing')
-    
-    try {
-      const results = await analyzeStatement(file)
-      setResults(results)
-      setStatus('complete')
-    } catch (error) {
-      console.error('Statement analysis failed:', error)
-      setStatus('idle')
+    const fd = new FormData();
+    fd.set("file", file);
+
+    const res = await fetch("/api/statements", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setStatus("error");
+      setError(payload?.error ?? "Statement import failed");
+      return;
     }
-  }
+
+    setResult(payload as StatementResult);
+    setStatus("complete");
+  };
 
   return (
-    <div className="max-w-2xl mx-auto p-8 bg-gradient-to-br from-slate-50 to-blue-50 rounded-3xl shadow-2xl border border-blue-100">
-      {/* Header */}
+    <div className="max-w-2xl mx-auto p-8 bg-gradient-to-br from-slate-50 to-blue-50 rounded-3xl shadow-2xl border border-blue-100 text-gray-900">
       <div className="text-center mb-10">
         <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl">
           <FileText className="h-12 w-12 text-white" />
         </div>
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-3">
-          Merchant Statement Analyzer
-        </h1>
-        <p className="text-xl text-gray-600 max-w-md mx-auto">
-          AI automatically extracts transactions and generates insights
-        </p>
+        <h1 className="text-3xl font-bold mb-2">Statement Import</h1>
+        <p className="text-sm text-gray-600">Upload a statement and extract transactions into One82.</p>
       </div>
 
-      {/* Upload Area */}
       <div className="space-y-6">
         <input
           type="file"
@@ -123,94 +79,85 @@ export function StatementUploader() {
           onChange={(e) => setFile(e.target.files?.[0] || null)}
           className="hidden"
           id="statement-file"
-          disabled={status === 'processing'}
+          disabled={status === "processing"}
         />
-        
+
         <label
           htmlFor="statement-file"
-          className={`block p-12 border-3 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
-            file 
-              ? 'border-green-400 bg-green-50 shadow-lg' 
-              : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50 hover:shadow-xl'
-          } ${status === 'processing' ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`block p-12 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
+            file ? "border-green-400 bg-green-50 shadow-lg" : "border-gray-300 hover:border-blue-400 hover:bg-blue-50 hover:shadow-xl"
+          } ${status === "processing" ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           {file ? (
             <div className="space-y-2">
               <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
               <div>
                 <p className="font-semibold text-green-700">{file.name}</p>
-                <p className="text-sm text-green-600">Ready to analyze</p>
+                <p className="text-sm text-green-600">Ready to import</p>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
               <Upload className="h-12 w-12 text-gray-400 mx-auto" />
               <div>
-                <p className="text-xl font-semibold text-gray-800">Drop your statement here</p>
-                <p className="text-gray-500">PDF or image • Works with all processors</p>
+                <p className="text-lg font-semibold text-gray-800">Drop your statement here</p>
+                <p className="text-gray-500">PDF or image</p>
               </div>
             </div>
           )}
         </label>
 
-        {/* Analyze Button */}
-        {file && status !== 'processing' && (
+        {file && status !== "processing" && (
           <button
-            onClick={handleUpload}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-5 px-8 rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-200"
+            onClick={upload}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-4 px-6 rounded-2xl font-bold shadow-xl hover:shadow-2xl transition-all duration-200"
           >
-            ✨ AI Analyze Statement
+            Import Statement
           </button>
         )}
       </div>
 
-      {/* Results */}
-      {status === 'processing' && (
-        <div className="mt-8 p-8 bg-blue-50 border-2 border-blue-200 rounded-2xl text-center">
-          <Sparkles className="h-12 w-12 text-blue-500 mx-auto mb-4 animate-pulse" />
-          <p className="text-xl font-semibold text-blue-800">AI is analyzing your statement...</p>
-          <p className="text-blue-600 mt-2">Extracting transactions, calculating fees, generating insights</p>
+      {status === "processing" && (
+        <div className="mt-8 p-6 bg-blue-50 border border-blue-200 rounded-2xl text-center">
+          <p className="font-semibold text-blue-800">Analyzing statement...</p>
+          <p className="text-blue-600 text-sm mt-1">Extracting transactions and totals</p>
         </div>
       )}
 
-      {results && (
-        <div className="mt-8 p-8 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-3xl shadow-2xl">
-          <div className="flex items-start gap-4 mb-6">
-            <CheckCircle className="h-12 w-12 text-green-500 mt-1 flex-shrink-0" />
-            <div>
-              <h3 className="text-2xl font-bold text-green-900 mb-2">Analysis Complete!</h3>
-              <p className="text-green-800 text-lg">{results.aiSummary}</p>
+      {status === "error" && error && (
+        <div className="mt-8 p-6 bg-red-50 border border-red-200 rounded-2xl">
+          <p className="font-semibold text-red-900">Import failed</p>
+          <p className="text-sm text-red-800 mt-1">{error}</p>
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-8 p-6 bg-white border rounded-2xl">
+          <p className="text-sm font-semibold mb-2">Import complete</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="rounded-xl border p-3">
+              <p className="text-xs text-gray-500">Inserted transactions</p>
+              <p className="text-xl font-bold">{result.inserted_transactions}</p>
+            </div>
+            <div className="rounded-xl border p-3">
+              <p className="text-xs text-gray-500">Total volume</p>
+              <p className="text-xl font-bold">
+                {result.currency} {Number(result.total_volume ?? 0).toFixed(2)}
+              </p>
             </div>
           </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-xl shadow-sm text-center">
-              <p className="text-sm text-gray-600">Transactions</p>
-              <p className="text-2xl font-bold text-gray-900">{results.transactions.toLocaleString()}</p>
-            </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm text-center">
-              <p className="text-sm text-gray-600">Volume</p>
-              <p className="text-2xl font-bold text-blue-600">${results.volume}</p>
-            </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm text-center">
-              <p className="text-sm text-gray-600">Fees</p>
-              <p className="text-2xl font-bold text-red-600">${results.fees}</p>
-            </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm text-center">
-              <p className="text-sm text-gray-600">Fee Rate</p>
-              <p className="text-2xl font-bold text-orange-600">{results.feeRate}%</p>
-            </div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-2xl shadow-lg border-l-4 border-green-500">
-            <p className="font-semibold text-sm text-green-900 uppercase tracking-wide mb-2">
-              Confidence: {(results.confidence * 100).toFixed(0)}%
-            </p>
+          <p className="mt-3 text-sm text-gray-700">{result.message}</p>
+          <div className="mt-4 flex justify-end">
+            <button
+              className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
+              onClick={() => router.push("/dashboard")}
+            >
+              Back to dashboard
+            </button>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default StatementUploader
