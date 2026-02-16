@@ -1,1 +1,2 @@
-CREATE TABLE IF NOT EXISTS anomaly_rules (rule_id UUID PRIMARY KEY, company_id UUID, rule_type TEXT, threshold_config JSONB, enabled BOOLEAN DEFAULT TRUE);
+-- Deprecated migration (pre-One82 schema).
+-- Kept as a no-op so fresh `supabase db reset` doesn't fail.

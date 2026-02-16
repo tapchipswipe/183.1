@@ -1,3 +1,3 @@
--- Priority 1: Data Quality Checks
-ALTER TABLE IF EXISTS normalized_transactions ADD CONSTRAINT valid_amount CHECK (amount > 0);
-CREATE TABLE IF NOT EXISTS data_quality_issues (issue_id UUID PRIMARY KEY, source_provider TEXT, issue_type TEXT, detected_at TIMESTAMPTZ DEFAULT NOW());
+-- Deprecated migration (pre-One82 schema).
+-- Kept as a no-op so fresh `supabase db reset` doesn't fail.
+-- One82 uses `supabase/migrations/100_core_schema.sql` as the Phase 1 foundation.

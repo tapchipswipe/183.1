@@ -1,1 +1,2 @@
-CREATE TABLE IF NOT EXISTS recommendation_feedback (feedback_id UUID PRIMARY KEY, recommendation_id UUID, action_taken TEXT, outcome TEXT);
+-- Deprecated migration (pre-One82 schema).
+-- Kept as a no-op so fresh `supabase db reset` doesn't fail.

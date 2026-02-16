@@ -1,1 +1,2 @@
-CREATE TABLE normalized_transactions_partitioned (LIKE normalized_transactions) PARTITION BY HASH (company_id);
+-- Deprecated migration (pre-One82 schema).
+-- Kept as a no-op so fresh `supabase db reset` doesn't fail.
