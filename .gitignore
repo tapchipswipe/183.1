@@ -5,6 +5,7 @@
 
 # Supabase generated
 .supabase/
+supabase/.temp/
 
 # Secrets / keys
 *.key
@@ -22,7 +23,9 @@ pnpm-lock.yaml
 dist/
 build/
 coverage/
+.next/
 *.log
+*.tsbuildinfo
 
 # OS / editor
 .DS_Store
